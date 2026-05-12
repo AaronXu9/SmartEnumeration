@@ -49,6 +49,10 @@ from al_benchmark_gpr91.strategy_i_ml_alloc import (  # noqa: E402
 from al_benchmark_gpr91.strategy_j_per_synthon_ranker import (  # noqa: E402
     strategy_j_synthon_ranker_baseline_alloc,
     strategy_j_synthon_ranker_ucb_alloc,
+    strategy_j_tail_weighted_baseline_alloc,
+    strategy_j_tail_weighted_ucb_alloc,
+    strategy_j_classifier_baseline_alloc,
+    strategy_j_classifier_ucb_alloc,
 )
 from al_benchmark_gpr91.strategy_k_iterative_al import (  # noqa: E402
     strategy_k_iterative_al,
@@ -243,6 +247,42 @@ def run_all_strategies(
     records.append(_record("J-ucb", 1, "alloc=ucb + learned synthon ranker",
                             result, baseline_ligands))
     _print_progress("J-ucb", 1, result, records[-1])
+
+    # J-A: tail-weighted MSE ranker. Weights samples below threshold higher
+    # so the GBR's loss focuses on the metric-relevant tail.
+    result = strategy_j_tail_weighted_baseline_alloc(
+        pools[1], mel_ranked, budget=BUDGET,
+        mel_features_df=mel_features_df, seed=SEED,
+    )
+    records.append(_record("J-A-base", 1, "alloc=baseline + tail-weighted MSE ranker (T_hit=-45)",
+                            result, baseline_ligands))
+    _print_progress("J-A-base", 1, result, records[-1])
+
+    result = strategy_j_tail_weighted_ucb_alloc(
+        pools[1], mel_ranked, budget=BUDGET,
+        mel_features_df=mel_features_df, seed=SEED,
+    )
+    records.append(_record("J-A-ucb", 1, "alloc=ucb + tail-weighted MSE ranker (T_hit=-45)",
+                            result, baseline_ligands))
+    _print_progress("J-A-ucb", 1, result, records[-1])
+
+    # J-B: binary classifier (y = FL_Score <= threshold). Picker uses
+    # -P(hit) so "lower = better" orientation is preserved.
+    result = strategy_j_classifier_baseline_alloc(
+        pools[1], mel_ranked, budget=BUDGET,
+        mel_features_df=mel_features_df, seed=SEED,
+    )
+    records.append(_record("J-B-base", 1, "alloc=baseline + binary classifier (T_hit=-45)",
+                            result, baseline_ligands))
+    _print_progress("J-B-base", 1, result, records[-1])
+
+    result = strategy_j_classifier_ucb_alloc(
+        pools[1], mel_ranked, budget=BUDGET,
+        mel_features_df=mel_features_df, seed=SEED,
+    )
+    records.append(_record("J-B-ucb", 1, "alloc=ucb + binary classifier (T_hit=-45)",
+                            result, baseline_ligands))
+    _print_progress("J-B-ucb", 1, result, records[-1])
 
     # K — iterative AL with model retraining. The defaults below balance
     # signal quality with compute: ~5 rounds × bag=2 keeps total time

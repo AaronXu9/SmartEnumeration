@@ -29,6 +29,7 @@ import numpy as np
 import pandas as pd
 
 from al_benchmark_gpr91._ml_common import (
+    BaggedClassifier,
     BaggedRegressor,
     SYNTHON_NUMERIC_COLS,
     extract_probe_observations,
@@ -50,17 +51,57 @@ def _train_synthon_ranker(
     probes: dict[str, pd.DataFrame],
     mel_features_df: pd.DataFrame | None,
     seed: int,
-) -> BaggedRegressor | None:
+    mode: str = "mse",
+    hit_threshold: float = -45.0,
+    tail_weight_eps: float = 1.0,
+) -> BaggedRegressor | BaggedClassifier | None:
     """Fit a small ensemble on probe observations.
 
-    Returns None if there's not enough labeled data to train (in which
-    case the caller should fall back to softmax sampling on RTCNN)."""
+    Modes:
+    - **mse** (default): regress on FullLigand_Score with standard MSE
+      loss. Optimizes bulk fit.
+    - **tail**: tail-weighted MSE. `sample_weight ∝ max(eps, hit_threshold - y)`
+      so samples in the FullLigand_Score tail (y much less than
+      `hit_threshold`) dominate the loss. Optimizes the metric-relevant
+      tail at the cost of bulk fit.
+    - **binary**: classify `y_binary = (FullLigand_Score <= hit_threshold)`.
+      Predicts probability of being a hit. Picker uses -P(hit) so lower
+      = better, same orientation as the regression modes.
+
+    Returns None if probe data is too small or one-class (binary mode
+    only)."""
     X, y = extract_probe_observations(probes, mel_features_df=mel_features_df)
-    if len(X) < 20:           # safety: very small probes are useless
+    if len(X) < 20:
         return None
-    bag = BaggedRegressor(n_bags=3, member_n_estimators=40, seed=seed)
-    bag.fit(X, y)
-    return bag
+
+    if mode == "mse":
+        bag = BaggedRegressor(n_bags=3, member_n_estimators=40, seed=seed)
+        bag.fit(X, y)
+        return bag
+
+    if mode == "tail":
+        # Tail-weighted MSE: samples with FL_Score below threshold get
+        # weight = (threshold - y); others get tail_weight_eps. Add the
+        # epsilon offset so well-fit bulk samples don't get zero weight.
+        weights = np.maximum(
+            tail_weight_eps, (hit_threshold - y).astype(np.float32)
+        ).astype(np.float32)
+        bag = BaggedRegressor(n_bags=3, member_n_estimators=40, seed=seed)
+        bag.fit(X, y, sample_weight=weights)
+        return bag
+
+    if mode == "binary":
+        y_bin = (y <= hit_threshold).astype(np.int8)
+        if y_bin.sum() < 2 or (len(y_bin) - y_bin.sum()) < 2:
+            # Need both classes — fall back to MSE if probe is one-class.
+            bag = BaggedRegressor(n_bags=3, member_n_estimators=40, seed=seed)
+            bag.fit(X, y)
+            return bag
+        clf = BaggedClassifier(n_bags=3, member_n_estimators=40, seed=seed)
+        clf.fit(X, y_bin)
+        return clf
+
+    raise ValueError(f"unknown mode {mode!r}; valid: 'mse', 'tail', 'binary'")
 
 
 def _learned_synthon_picker(
@@ -175,6 +216,8 @@ def _run_strategy_j(
     min_commit: int = 50,
     seed: int = 42,
     mel_features_df: pd.DataFrame | None = None,
+    mode: str = "mse",
+    ranker_hit_threshold: float = -45.0,
 ) -> StrategyResult:
     """Shared scaffold for J-baseline-alloc and J-UCB-alloc. The only
     difference is which MEL-level policy is invoked between probe and
@@ -219,8 +262,11 @@ def _run_strategy_j(
         alpha=alpha, min_commit=min_commit,
     )
 
-    # Phase 4 — train synthon ranker.
-    model = _train_synthon_ranker(probes, mel_features_df, seed=seed)
+    # Phase 4 — train synthon ranker (mode controls loss / target).
+    model = _train_synthon_ranker(
+        probes, mel_features_df, seed=seed,
+        mode=mode, hit_threshold=ranker_hit_threshold,
+    )
     if model is None:
         # Fall back: pick synthons by raw RTCNN (≈ Strategy C's softmax T→0).
         # We do a stable nsmallest on _score per MEL, matching what the
@@ -269,6 +315,8 @@ def _run_strategy_j(
             "seed": seed,
             "picker": "learned" if model is not None else "softmax_fallback",
             "uses_mel_features": mel_features_df is not None,
+            "ranker_mode": mode,
+            "ranker_hit_threshold": ranker_hit_threshold,
         },
     )
 
@@ -297,7 +345,76 @@ def strategy_j_synthon_ranker_ucb_alloc(
     )
 
 
+# ─── Tail-weighted MSE variants ───────────────────────────────────────────
+# Loss weights samples below `ranker_hit_threshold` higher than the bulk.
+# Tests whether MSE's "fit the bulk" pathology was the reason J's EF AUC
+# came in below the closed-form posterior arms.
+
+def strategy_j_tail_weighted_baseline_alloc(
+    scored_df: pd.DataFrame,
+    mel_ranked: pd.DataFrame,
+    budget: int = 1_000_000,
+    ranker_hit_threshold: float = -45.0,
+    **kwargs,
+) -> StrategyResult:
+    """J-A-base — baseline allocator + tail-weighted-MSE learned ranker."""
+    return _run_strategy_j(
+        scored_df, mel_ranked, policy_name="baseline", budget=budget,
+        mode="tail", ranker_hit_threshold=ranker_hit_threshold, **kwargs,
+    )
+
+
+def strategy_j_tail_weighted_ucb_alloc(
+    scored_df: pd.DataFrame,
+    mel_ranked: pd.DataFrame,
+    budget: int = 1_000_000,
+    ranker_hit_threshold: float = -45.0,
+    **kwargs,
+) -> StrategyResult:
+    """J-A-ucb — UCB allocator + tail-weighted-MSE learned ranker."""
+    return _run_strategy_j(
+        scored_df, mel_ranked, policy_name="ucb", budget=budget,
+        mode="tail", ranker_hit_threshold=ranker_hit_threshold, **kwargs,
+    )
+
+
+# ─── Binary-classifier variants ───────────────────────────────────────────
+# Target = (FL_Score <= threshold); classifier predicts P(hit). Picker
+# uses -P(hit) so the orientation stays "lower = better" everywhere.
+
+def strategy_j_classifier_baseline_alloc(
+    scored_df: pd.DataFrame,
+    mel_ranked: pd.DataFrame,
+    budget: int = 1_000_000,
+    ranker_hit_threshold: float = -45.0,
+    **kwargs,
+) -> StrategyResult:
+    """J-B-base — baseline allocator + binary classifier picker."""
+    return _run_strategy_j(
+        scored_df, mel_ranked, policy_name="baseline", budget=budget,
+        mode="binary", ranker_hit_threshold=ranker_hit_threshold, **kwargs,
+    )
+
+
+def strategy_j_classifier_ucb_alloc(
+    scored_df: pd.DataFrame,
+    mel_ranked: pd.DataFrame,
+    budget: int = 1_000_000,
+    ranker_hit_threshold: float = -45.0,
+    **kwargs,
+) -> StrategyResult:
+    """J-B-ucb — UCB allocator + binary classifier picker."""
+    return _run_strategy_j(
+        scored_df, mel_ranked, policy_name="ucb", budget=budget,
+        mode="binary", ranker_hit_threshold=ranker_hit_threshold, **kwargs,
+    )
+
+
 __all__ = [
     "strategy_j_synthon_ranker_baseline_alloc",
     "strategy_j_synthon_ranker_ucb_alloc",
+    "strategy_j_tail_weighted_baseline_alloc",
+    "strategy_j_tail_weighted_ucb_alloc",
+    "strategy_j_classifier_baseline_alloc",
+    "strategy_j_classifier_ucb_alloc",
 ]

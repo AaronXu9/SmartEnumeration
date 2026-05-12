@@ -30,6 +30,38 @@ Headline:
   strategy. None of the learned strategies came close to closing this
   gap.
 
+**Update (2026-05-12): tail-weighted MSE diagnostic.**
+
+The original J/K/L/N underperformance puzzle is explained by a
+**loss/metric mismatch**: their MSE-loss surrogate optimizes the
+*bulk* of the FullLigand_Score distribution, but EF AUC is a *tail*
+metric. We confirmed this with three diagnostics:
+
+- Held-out test: the learned model has Spearman 0.38 vs RTCNN's 0.23
+  (and within-MEL Spearman 0.275 vs 0.171, beating RTCNN in **89% of
+  MELs**). So the model *is* learning useful signal.
+- But the improvement is in the bulk. The tail (FL_Score ≤ −55) is
+  too sparse for MSE loss to fit.
+- Two remediations tested:
+
+| Variant | EF AUC | Δ vs J-mse-ucb (3.824) | Δ vs E-S1 (4.007) |
+|---|---:|---:|---:|
+| **J-A-ucb (tail-weighted MSE, T_hit=−45)** | **3.907** | **+2.2%** | **−2.5%** |
+| J-A-base (tail-weighted, baseline alloc) | 3.312 | +3.2% | −17.3% |
+| J-B-ucb (binary classifier, T_hit=−45) | 2.245 | −41.3% | −44.0% |
+| J-B-base (binary classifier, baseline alloc) | 2.067 | −35.6% | −48.4% |
+
+**J-A (tail-weighted MSE) is the new best learned strategy at EF AUC
+3.907 — within −2.5% of E-S1's closed-form UCB**, the smallest gap
+we've seen. The fix is a one-line sample-weight change in the GBR
+training: weight each sample by `max(eps, hit_threshold − y)` so the
+loss puts more pressure on the tail.
+
+**J-B (binary classifier with T_hit=−45) flops at EF AUC ≈ 2.1** —
+the strict threshold yields too few positives (<200 in the 24K probe)
+for the classifier to learn the positive class. A looser threshold
+might fix this; deferred.
+
 The user's two motivating concerns were addressed:
 
 1. **MEL chemistry features actually used (Strategy I + N).** Morgan
@@ -272,6 +304,23 @@ all per-strategy EF AUC + per-threshold EF + n_mels + n_ligands.
 
 All strategies are seed-deterministic (default seed=42); re-running
 produces bit-identical selection InChIKeys.
+
+## Plots
+
+EF curves comparing strategies (Wenjin-style):
+
+- [`../al_benchmark_gpr91/plots/ef_curves_GPR91.png`](../al_benchmark_gpr91/plots/ef_curves_GPR91.png)
+  — VS baseline + C/D/E/J-MSE-UCB on the EF-vs-threshold curve.
+- [`../al_benchmark_gpr91/plots/ef_curves_J_A_compare.png`](../al_benchmark_gpr91/plots/ef_curves_J_A_compare.png)
+  — same plus **J-A-UCB (tail-weighted MSE)** to visualize where the
+  +2.2% EF AUC gain materialises in the curve (mostly the −47 to −51
+  threshold range; all strategies converge to EF ≈ 7 at the strict
+  −55 tail).
+
+Reading the plot: all sensible strategies have *the same shape*
+EF-vs-threshold curve, just shifted by a few percent in their AUC.
+The metric ceiling is dominated by data signal, not selection
+sophistication.
 
 ## File index
 

@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
-from sklearn.ensemble import GradientBoostingRegressor
+from sklearn.ensemble import GradientBoostingClassifier, GradientBoostingRegressor
 
 
 # 9 per-synthon numeric columns (present in `csv/all_mels_combined_core.csv`).
@@ -183,7 +183,13 @@ class BaggedRegressor:
         self.seed = seed
         self.models_: list[GradientBoostingRegressor] = []
 
-    def fit(self, X: np.ndarray, y: np.ndarray) -> "BaggedRegressor":
+    def fit(self, X: np.ndarray, y: np.ndarray,
+            sample_weight: np.ndarray | None = None) -> "BaggedRegressor":
+        """Fit n_bags GBR members on bootstrap samples.
+
+        `sample_weight` (optional, shape == y.shape): forwarded to each
+        member's fit. Used for tail-weighted MSE where the loss puts
+        more weight on samples in the FullLigand_Score tail."""
         if len(X) == 0:
             raise ValueError("BaggedRegressor.fit got empty X")
         rng = np.random.default_rng(self.seed)
@@ -199,7 +205,10 @@ class BaggedRegressor:
                 subsample=self.subsample,
                 random_state=self.seed + i,
             )
-            model.fit(X[idx], y[idx])
+            if sample_weight is not None:
+                model.fit(X[idx], y[idx], sample_weight=sample_weight[idx])
+            else:
+                model.fit(X[idx], y[idx])
             self.models_.append(model)
         return self
 
@@ -218,7 +227,95 @@ class BaggedRegressor:
         return mu
 
 
+class BaggedClassifier:
+    """Bagged GradientBoostingClassifier for the tail-binary framing.
+
+    Target is `y_binary = (FL_Score <= hit_threshold)`. The classifier
+    learns P(hit). `predict()` returns **negative P(hit)** so the picker
+    can treat "lower = better" uniformly across the regressor and
+    classifier modes (lower negative-prob = higher prob = more likely
+    hit = better pick)."""
+
+    def __init__(
+        self,
+        n_bags: int = 5,
+        member_n_estimators: int = 50,
+        member_max_depth: int = 2,
+        learning_rate: float = 0.1,
+        subsample: float = 0.7,
+        seed: int = 42,
+    ) -> None:
+        self.n_bags = n_bags
+        self.member_n_estimators = member_n_estimators
+        self.member_max_depth = member_max_depth
+        self.learning_rate = learning_rate
+        self.subsample = subsample
+        self.seed = seed
+        self.models_: list[GradientBoostingClassifier] = []
+
+    def fit(self, X: np.ndarray, y_binary: np.ndarray,
+            sample_weight: np.ndarray | None = None) -> "BaggedClassifier":
+        if len(X) == 0:
+            raise ValueError("BaggedClassifier.fit got empty X")
+        # Need at least one positive and one negative class to fit.
+        n_pos = int(y_binary.sum())
+        n_neg = len(y_binary) - n_pos
+        if n_pos == 0 or n_neg == 0:
+            raise ValueError(
+                f"BaggedClassifier.fit needs both classes; got "
+                f"{n_pos} positives and {n_neg} negatives"
+            )
+        rng = np.random.default_rng(self.seed)
+        n = len(X)
+        self.models_ = []
+        for i in range(self.n_bags):
+            # Bootstrap with stratification: ensure each bag has both classes.
+            pos_idx = np.flatnonzero(y_binary == 1)
+            neg_idx = np.flatnonzero(y_binary == 0)
+            # Sample-with-replacement keeping the natural ratio.
+            sampled_pos = rng.choice(pos_idx, size=len(pos_idx), replace=True)
+            sampled_neg = rng.choice(neg_idx, size=len(neg_idx), replace=True)
+            idx = np.concatenate([sampled_pos, sampled_neg])
+            rng.shuffle(idx)
+            model = GradientBoostingClassifier(
+                n_estimators=self.member_n_estimators,
+                max_depth=self.member_max_depth,
+                learning_rate=self.learning_rate,
+                subsample=self.subsample,
+                random_state=self.seed + i,
+            )
+            if sample_weight is not None:
+                model.fit(X[idx], y_binary[idx], sample_weight=sample_weight[idx])
+            else:
+                model.fit(X[idx], y_binary[idx])
+            self.models_.append(model)
+        return self
+
+    def predict_proba_with_std(self, X: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """Returns (P(hit) mean, P(hit) std) across the ensemble."""
+        if not self.models_:
+            raise RuntimeError("BaggedClassifier.fit must be called before predict")
+        probs = np.stack(
+            [m.predict_proba(X)[:, 1] for m in self.models_], axis=0,
+        )
+        return probs.mean(axis=0).astype(np.float32), probs.std(axis=0, ddof=0).astype(np.float32)
+
+    def predict(self, X: np.ndarray) -> np.ndarray:
+        """Negative P(hit) so the picker can sort ascending (lower = better)."""
+        p, _ = self.predict_proba_with_std(X)
+        return -p
+
+    def predict_with_std(self, X: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """Match BaggedRegressor's interface: (mu, sigma) where mu is the
+        "lower = better" score. We negate P(hit) so that downstream
+        UCB-style acquisition `mu - kappa*sigma` works uniformly across
+        regressor and classifier modes."""
+        p, sigma = self.predict_proba_with_std(X)
+        return -p, sigma
+
+
 __all__ = [
+    "BaggedClassifier",
     "BaggedRegressor",
     "SYNTHON_NUMERIC_COLS",
     "extract_probe_observations",
