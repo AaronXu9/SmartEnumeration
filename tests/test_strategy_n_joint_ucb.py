@@ -1,0 +1,96 @@
+"""Tests for Strategy N — joint MEL+synthon UCB acquisition."""
+from __future__ import annotations
+
+import unittest
+
+try:
+    import numpy as np
+    import pandas as pd
+    import sklearn  # noqa: F401
+    _HAS_DEPS = True
+except ImportError:
+    _HAS_DEPS = False
+
+
+def _synthetic_universe(n_mels=4, synthons_per_mel=500, seed=0):
+    rng = np.random.default_rng(seed)
+    centers = [-35, -25, -15, -5]
+    rows = []
+    for m in range(min(n_mels, len(centers))):
+        c = centers[m]
+        for j in range(synthons_per_mel):
+            rt = rng.normal(c, 4)
+            rows.append({
+                "key_norm": f"MEL_{m}",
+                "synthon_inchikey": f"S_{m}_{j:04d}",
+                "RTCNN_Score": rt,
+                "FullLigand_Score": rt + rng.normal(0, 1.0),
+                "Strain": rng.uniform(5, 25),
+                "CoreRmsd": rng.uniform(0.5, 3.0),
+                "MolLogP": rng.uniform(-1, 5),
+                "MolLogS": rng.uniform(-6, -1),
+                "MoldHf": rng.normal(-40, 20),
+                "MolPSA": rng.uniform(20, 120),
+                "MolVolume": rng.uniform(150, 400),
+                "SubstScore": rng.uniform(50, 130),
+                "_score": rt,
+            })
+    syn = pd.DataFrame(rows)
+    mel_rows = [{"key_norm": f"MEL_{i}", "Score": centers[i], "mel_rank": i + 1}
+                for i in range(min(n_mels, len(centers)))]
+    return syn, pd.DataFrame(mel_rows)
+
+
+@unittest.skipUnless(_HAS_DEPS, "needs pandas+sklearn (OpenVsynthes008 env)")
+class TestStrategyN(unittest.TestCase):
+
+    def test_joint_ucb_runs(self):
+        from al_benchmark_gpr91.strategy_n_joint_ucb import strategy_n_joint_ucb
+        syn, mel_ranked = _synthetic_universe()
+        result = strategy_n_joint_ucb(
+            syn, mel_ranked, budget=400, n_probe=100,
+            ensemble_size=2, member_n_estimators=15, seed=0,
+        )
+        self.assertEqual(result.n_ligands, 400)
+        self.assertEqual(result.extras["policy"], "n_joint_ucb")
+
+    def test_per_mel_cap_holds(self):
+        from al_benchmark_gpr91.strategy_n_joint_ucb import strategy_n_joint_ucb
+        syn, mel_ranked = _synthetic_universe()
+        result = strategy_n_joint_ucb(
+            syn, mel_ranked, budget=400, n_probe=100,
+            per_mel_cap=150, ensemble_size=2, member_n_estimators=10, seed=0,
+        )
+        counts = result.selected.groupby("key_norm").size()
+        for n in counts.values:
+            self.assertLessEqual(n, 150)
+
+    def test_prefers_better_mels(self):
+        from al_benchmark_gpr91.strategy_n_joint_ucb import strategy_n_joint_ucb
+        syn, mel_ranked = _synthetic_universe()
+        result = strategy_n_joint_ucb(
+            syn, mel_ranked, budget=400, n_probe=100,
+            per_mel_cap=10_000, ensemble_size=2, member_n_estimators=15, seed=0,
+        )
+        counts = result.selected.groupby("key_norm").size()
+        self.assertGreater(counts.get("MEL_0", 0), counts.get("MEL_3", 0))
+
+    def test_seed_deterministic(self):
+        from al_benchmark_gpr91.strategy_n_joint_ucb import strategy_n_joint_ucb
+        syn, mel_ranked = _synthetic_universe()
+        a = strategy_n_joint_ucb(
+            syn, mel_ranked, budget=300, n_probe=80,
+            ensemble_size=2, member_n_estimators=10, seed=42,
+        )
+        b = strategy_n_joint_ucb(
+            syn, mel_ranked, budget=300, n_probe=80,
+            ensemble_size=2, member_n_estimators=10, seed=42,
+        )
+        self.assertEqual(
+            sorted(a.selected["synthon_inchikey"]),
+            sorted(b.selected["synthon_inchikey"]),
+        )
+
+
+if __name__ == "__main__":
+    unittest.main()

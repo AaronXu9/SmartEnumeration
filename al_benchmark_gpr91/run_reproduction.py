@@ -43,6 +43,26 @@ from al_benchmark_gpr91.al_ext_strategies import (  # noqa: E402
     strategy_g_baseline_alloc_softmax_pick,
     strategy_h_greedy_alloc_softmax_pick,
 )
+from al_benchmark_gpr91.strategy_i_ml_alloc import (  # noqa: E402
+    strategy_i_ml_alloc_softmax_pick,
+)
+from al_benchmark_gpr91.strategy_j_per_synthon_ranker import (  # noqa: E402
+    strategy_j_synthon_ranker_baseline_alloc,
+    strategy_j_synthon_ranker_ucb_alloc,
+)
+from al_benchmark_gpr91.strategy_k_iterative_al import (  # noqa: E402
+    strategy_k_iterative_al,
+)
+from al_benchmark_gpr91.strategy_l_multifidelity import (  # noqa: E402
+    strategy_l_multifidelity_al,
+)
+from al_benchmark_gpr91.strategy_m_submodular import (  # noqa: E402
+    strategy_m_submodular,
+)
+from al_benchmark_gpr91.strategy_n_joint_ucb import (  # noqa: E402
+    strategy_n_joint_ucb,
+)
+from al_benchmark_gpr91._mel_features import load_or_compute as _load_mel_features  # noqa: E402
 from paths import PROJECT_ROOT  # noqa: E402
 
 CSV_DIR = PROJECT_ROOT / "csv"
@@ -174,6 +194,126 @@ def run_all_strategies(
         cfg = f"alloc={alloc_name} | T={1.0} | n_probe=50"
         records.append(_record(letter, 1, cfg, result, baseline_ligands))
         _print_progress(letter, 1, result, records[-1])
+
+    # ---- Sophisticated strategies I/J/K/L/M/N (chemistry-aware + ML) ----
+    # Load MEL chemistry features once. We use MACCS (167 bits) instead of
+    # Morgan (1024 bits) for the joint prediction pipeline (J/K/L/N) —
+    # the bulk-prediction matrix is 10M × ~199 cols × float32 ≈ 8 GB
+    # with MACCS vs ~40 GB with Morgan, and Morgan's larger pandas-merge
+    # temporaries OOM'd on the workstation (~125 GB RAM but peak doubled
+    # during the merge). Strategy I's training set is small (~1881 rows
+    # × 199 cols ≈ 1.5 MB) so MACCS is sufficient for that too.
+    #
+    # MACCS feature set: 167 binary keys (predefined SMARTS patterns)
+    # + 10 Stage-1 docking + 3 physchem + 3 pool + 7 probe placeholders
+    # = 190-dim per-MEL feature vector.
+    print("\n=== Loading MEL chemistry features (RDKit MACCS 167 bits) ===",
+          file=sys.stderr)
+    mel_features_df = _load_mel_features(
+        PROJECT_ROOT / "csv" / "Top1K_2Comp_MEL_Frags_With_VS_OpenVS_Mapping.csv",
+        fp_kind="maccs", fp_radius=2, fp_n_bits=0,
+    )
+    print(f"  MEL feature matrix: {mel_features_df.shape}", file=sys.stderr)
+
+    print("\n=== Sophisticated strategies I/J/K/L/M/N ===", file=sys.stderr)
+
+    # I — chemistry-aware ML allocator + softmax picker.
+    result = strategy_i_ml_alloc_softmax_pick(
+        pools[1], mel_ranked, budget=BUDGET,
+        mel_features_df=mel_features_df, seed=SEED,
+    )
+    records.append(_record("I", 1, "ml-chem | T=1 | n_probe=50",
+                            result, baseline_ligands))
+    _print_progress("I", 1, result, records[-1])
+
+    # J-base — baseline-alloc + per-synthon learned ranker.
+    result = strategy_j_synthon_ranker_baseline_alloc(
+        pools[1], mel_ranked, budget=BUDGET,
+        mel_features_df=mel_features_df, seed=SEED,
+    )
+    records.append(_record("J-base", 1, "alloc=baseline + learned synthon ranker",
+                            result, baseline_ligands))
+    _print_progress("J-base", 1, result, records[-1])
+
+    # J-ucb — UCB alloc + per-synthon learned ranker.
+    result = strategy_j_synthon_ranker_ucb_alloc(
+        pools[1], mel_ranked, budget=BUDGET,
+        mel_features_df=mel_features_df, seed=SEED,
+    )
+    records.append(_record("J-ucb", 1, "alloc=ucb + learned synthon ranker",
+                            result, baseline_ligands))
+    _print_progress("J-ucb", 1, result, records[-1])
+
+    # K — iterative AL with model retraining. The defaults below balance
+    # signal quality with compute: ~5 rounds × bag=2 keeps total time
+    # under ~10 min per run while still letting the model refit
+    # mid-budget.
+    result = strategy_k_iterative_al(
+        pools[1], mel_ranked, budget=BUDGET,
+        mel_features_df=mel_features_df,
+        n_initial=50_000, batch_size=200_000,
+        kappa=1.0, per_mel_cap=5_000,
+        ensemble_size=2, member_n_estimators=20,
+        seed=SEED,
+    )
+    records.append(_record("K", 1, "iter | bag=2 | rounds=5 | κ=1.0 | cap=5K",
+                            result, baseline_ligands))
+    _print_progress("K", 1, result, records[-1])
+
+    # L — multi-fidelity single-shot UCB. Smaller ensemble for speed.
+    result = strategy_l_multifidelity_al(
+        pools[1], mel_ranked, budget=BUDGET,
+        mel_features_df=mel_features_df,
+        n_probe=50_000, kappa=1.0, per_mel_cap=5_000,
+        ensemble_size=3, member_n_estimators=30,
+        seed=SEED,
+    )
+    records.append(_record("L", 1, "mf-single | bag=3 | κ=1.0 | cap=5K",
+                            result, baseline_ligands))
+    _print_progress("L", 1, result, records[-1])
+
+    # M — submodular / diversity-aware (V1 = count distinct MELs).
+    # Score signal = RTCNN (the cheap pre-computed signal, fair against
+    # C/D/E/F/G/H). Diversity term = |distinct MELs|.
+    result = strategy_m_submodular(
+        pools[1], mel_ranked, budget=BUDGET,
+        alpha=0.7, diversity_weight=1.0,
+        use_learned_score=False,
+        score_column="RTCNN_Score", seed=SEED,
+    )
+    records.append(_record("M", 1, "α=0.7 + |distinct MELs| | RTCNN score",
+                            result, baseline_ligands))
+    _print_progress("M", 1, result, records[-1])
+
+    # M-oracle — same submodular with FullLigand_Score directly as the
+    # score signal. NOT a fair benchmark arm (reads the metric target);
+    # included as a CEILING on what M's diversity-aware selection could
+    # achieve if score prediction were perfect.
+    result = strategy_m_submodular(
+        pools[1], mel_ranked, budget=BUDGET,
+        alpha=0.7, diversity_weight=1.0,
+        use_learned_score=False,
+        score_column="FullLigand_Score", seed=SEED,
+    )
+    records.append(_record("M-oracle", 1, "α=0.7 + |distinct MELs| | FullLigand_Score (ceiling)",
+                            result, baseline_ligands))
+    _print_progress("M-oracle", 1, result, records[-1])
+
+    # N — joint MEL+synthon UCB acquisition (project-customized bi-level).
+    # Same algorithm as L; differentiated by hyperparams (larger ensemble
+    # for tighter uncertainty estimate, which matters more in N since
+    # the per-MEL allocation emerges from UCB rather than being
+    # pre-allocated).
+    result = strategy_n_joint_ucb(
+        pools[1], mel_ranked, budget=BUDGET,
+        mel_features_df=mel_features_df,
+        n_probe=50_000, kappa=1.5, per_mel_cap=5_000,
+        ensemble_size=3, member_n_estimators=30,
+        seed=SEED,
+    )
+    records.append(_record("N", 1, "joint UCB | bag=3 | κ=1.5 | cap=5K",
+                            result, baseline_ligands))
+    _print_progress("N", 1, result, records[-1])
 
     return records
 

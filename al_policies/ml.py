@@ -73,13 +73,60 @@ def _features_for(p, history: HistoryView) -> list[float]:
 
 
 class MLRegressionAllocator:
+    """Gradient-boosted regressor on per-MEL features → observed hit rate.
+
+    V1 (CB2 SRG pilot) used probe summary statistics only.
+    V2 (GPR91 EF benchmark — Strategy I) adds **MEL chemistry features**
+    via the optional `mel_features_df` arg: pass a DataFrame indexed by
+    `key_norm` (hyphenated ICM InChIKey) with chemistry/physchem/Stage-1
+    columns; the allocator looks each MEL's row up by `p.key_norm` and
+    prepends the chemistry vector to the probe-summary features.
+
+    When `mel_features_df` is None, falls back to the V1 features-only
+    mode — preserves backward compatibility with the CB2 pilot tests.
+    """
+
     name = "ml"
 
     def __init__(self, hit_threshold: float = -25.0,
-                 n_estimators: int = 50, random_state: int = 0) -> None:
+                 n_estimators: int = 50, random_state: int = 0,
+                 mel_features_df=None) -> None:
         self.hit_threshold = hit_threshold
         self.n_estimators = n_estimators
         self.random_state = random_state
+        # When set, _features_for prepends per-MEL chemistry features.
+        # Expected shape: pandas DataFrame indexed by `key_norm`.
+        self.mel_features_df = mel_features_df
+        # Cache: lookup MEL feature vectors by key_norm to avoid repeated
+        # DataFrame.loc() on the 1000-row, 1047-col MEL features (which
+        # is otherwise the slowest part of allocate()).
+        self._mel_feat_cache: dict[str, list[float]] = {}
+
+    def _chemistry_features(self, p) -> list[float]:
+        """Return the per-MEL chemistry feature vector for a passing item,
+        or [] if no `mel_features_df` was provided or the lookup misses."""
+        if self.mel_features_df is None:
+            return []
+        key = getattr(p, "key_norm", None)
+        if key is None:
+            return []
+        cached = self._mel_feat_cache.get(key)
+        if cached is not None:
+            return cached
+        try:
+            row = self.mel_features_df.loc[key]
+        except KeyError:
+            # Unknown MEL → zero-vector of the same width.
+            row = [0.0] * self.mel_features_df.shape[1]
+        else:
+            row = row.tolist() if hasattr(row, "tolist") else list(row)
+        self._mel_feat_cache[key] = row
+        return row
+
+    def _features_for(self, p, history: HistoryView) -> list[float]:
+        """Per-row feature vector. Chemistry features (if any) come first,
+        then the probe summary stats."""
+        return self._chemistry_features(p) + _features_for(p, history)
 
     def _train(self, passing, history: HistoryView) -> GradientBoostingRegressor | None:
         """Fit a regressor on (features → observed hit rate) using current
@@ -90,7 +137,7 @@ class MLRegressionAllocator:
             if not scores:
                 continue
             hit_rate = sum(1 for s in scores if s <= self.hit_threshold) / len(scores)
-            X.append(_features_for(p, history))
+            X.append(self._features_for(p, history))
             y.append(hit_rate)
         if len(X) < 2:
             return None
@@ -114,7 +161,9 @@ class MLRegressionAllocator:
             # the maximum-entropy "I know nothing" choice.
             weights = {p.row: max(1, int(p.remainder)) for p in passing}
         else:
-            predicted_rate = model.predict([_features_for(p, history) for p in passing])
+            predicted_rate = model.predict(
+                [self._features_for(p, history) for p in passing]
+            )
             # weight = predicted_hit_rate × remaining synthons
             #        = predicted *number* of new hits if we spent the entire
             #          remainder on this MEL. Clip to a small positive lower
@@ -128,4 +177,7 @@ class MLRegressionAllocator:
         return _cap_spill(weights, remainders, budget, min_commit)
 
 
+# Register the V1 default (no chemistry features). The GPR91 strategy_i
+# helper constructs its own MLRegressionAllocator(mel_features_df=...)
+# instance with chemistry features when invoked.
 register(MLRegressionAllocator())

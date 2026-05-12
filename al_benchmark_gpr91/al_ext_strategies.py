@@ -200,12 +200,15 @@ def _pick_synthons_softmax(
 # Strategy template — shared frame for E/F/G/H
 # ----------------------------------------------------------------------
 
-def _instantiate_policy(name: str, seed: int):
+def _instantiate_policy(name: str, seed: int, mel_features_df=None):
     """Construct a FRESH policy instance per call so seeded policies
     (TS in particular) don't share state across strategy invocations.
 
     Avoids the global `POLICY_REGISTRY` singletons that would cause
-    seed-determinism to break."""
+    seed-determinism to break.
+
+    `mel_features_df` is only consumed by the ML allocator (Strategy I);
+    other policies ignore it."""
     from al_policies.baseline import BaselineDynamicAllocator
     from al_policies.greedy import EpsilonGreedyAllocator
     from al_policies.bandit import ThompsonSamplingAllocator, UCBAllocator
@@ -217,6 +220,11 @@ def _instantiate_policy(name: str, seed: int):
         return UCBAllocator()
     if name == "ts":
         return ThompsonSamplingAllocator(seed=seed)
+    if name == "ml":
+        from al_policies.ml import MLRegressionAllocator
+        return MLRegressionAllocator(
+            random_state=seed, mel_features_df=mel_features_df,
+        )
     raise KeyError(f"unknown policy: {name!r}")
 
 
@@ -230,14 +238,17 @@ def _run_probe_alloc_pick(
     alpha: float = 1.0,
     min_commit: int = 50,
     seed: int = 42,
+    mel_features_df=None,
 ) -> StrategyResult:
-    """Common scaffold for the four AL-extension strategies. The only
-    difference between E/F/G/H is which policy from `al_policies/` is
-    called for the MEL-level allocation step."""
+    """Common scaffold for the AL-extension strategies. The only
+    difference between E/F/G/H/I is which policy from `al_policies/` is
+    called for the MEL-level allocation step. Strategy I (policy_name='ml')
+    consumes `mel_features_df`; the others ignore it."""
     from al_policies import DictHistory
 
     rng = np.random.default_rng(seed)
-    policy = _instantiate_policy(policy_name, seed=seed)
+    policy = _instantiate_policy(policy_name, seed=seed,
+                                  mel_features_df=mel_features_df)
 
     # Phase 1 — probe each MEL with n_probe random synthons.
     probes, remainders = _probe_each_mel(scored_df, mel_ranked, n_probe, rng)
