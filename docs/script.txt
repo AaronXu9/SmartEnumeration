@@ -1,0 +1,179 @@
+Startup> Loading libraries.. 
+Startup> Loading aliases.. 
+Startup> Loading modules.. _macro  _bioinfo _cheminfo _rebel _ligedit _docking
+ Info> 1 shell objects read (skipped 0) from /Applications/MolsoftICM64.app/Contents/Resources/icm/nnInterMod.inm
+...ICM startup file executed... 
+icm/def> openFile "/Users/aoxu/projects/anchnor_based_VSYNTHES/CB2_5ZTY_ICM393_Eff2_2Comp_MEL_Top10_Hits.icb" 0 yes no no no " append"
+1 1 icb 
+global read binary command modify "/Users/aoxu/projects/anchnor_based_VSYNTHES/CB2_5ZTY_ICM393_Eff2_2Comp_MEL_Top10_Hits.icb" display append
+ Info> a_Dock_5ZTY_rec.a/^C174/sg <--> a_Dock_5ZTY_rec.a/^C179/sg  disulfide bond restored
+ Info> a_Dock_5ZTY_rec. ""
+ Info> 25 shell objects read (skipped 1) from /Users/aoxu/projects/anchnor_based_VSYNTHES/CB2_5ZTY_ICM393_Eff2_2Comp_MEL_Top10_Hits.icb
+icm/Dock_5ZTY_rec> dsChemLock_new "final_table" "final_table" 1 yes
+ Warning> failed to find font Symbol, using default
+ Warning> failed to find font Arial, using default
+icm/m> scanDsHit "Dock_5ZTY" "final_table" 1 yes & yes ! yes
+icm/Dock_5ZTY_rec> undisplay store a_Dock_5ZTY_rec.m
+icm/Dock_5ZTY_rec> cool a_Dock_5ZTY_rec.m
+icm/Dock_5ZTY_rec> undisplay store a_Dock_5ZTY_rec.m
+icm/Dock_5ZTY_rec> cool a_Dock_5ZTY_rec.m
+icm/Dock_5ZTY_rec> undisplay store a_m.m
+icm/Dock_5ZTY_rec> cool a_m.m
+icm/Dock_5ZTY_rec> undisplay store a_Dock_5ZTY_rec.m
+icm/Dock_5ZTY_rec> cool a_Dock_5ZTY_rec.m
+icm/Dock_5ZTY_rec> scanDsHit "Dock_5ZTY" "final_table" 1 yes & yes ! yes
+icm/Dock_5ZTY_rec> editSelection a_Dock_5ZTY_rec.m yes no no 
+icm/Dock_5ZTY_rec> undisplay store a_Dock_5ZTY_rec.m
+icm/Dock_5ZTY_rec> cool a_Dock_5ZTY_rec.m
+icm/Dock_5ZTY_rec> undisplay store a_m.m
+icm/Dock_5ZTY_rec> cool a_m.m
+icm/Dock_5ZTY_rec> undisplay store a_m.m
+icm/Dock_5ZTY_rec> set edit off 
+icm/Dock_5ZTY_rec> LIGAND.info = "<no info>" 
+icm/Dock_5ZTY_rec> as_out = a_Dock_5ZTY_rec.m 
+icm/Dock_5ZTY_rec> if ( Nof( Obj( as_out ) ) > 1 ) Askg(" Warning: More than one object in input selection.", "Ok", simple ) 
+icm/Dock_5ZTY_rec> if ( Nof( Obj( as_out ) ) > 1 ) as_out = as_out & Obj( as_out )[1] 
+icm/Dock_5ZTY_rec> e3dSetLigand as_out yes yes 7.0 yes 
+icm/Dock_5ZTY_rec_lig> if (Sum(LIGAND.box) != 0.) display box LIGAND.box 
+icm/Dock_5ZTY_rec_lig>  e3dIcmPocketFinder a_Dock_5ZTY_rec. 6. 
+ Accessible surface area = 23467.640976 (water radius= 1.4)
+ Mean Surface Conservation is  0.001 
+ en -145.8375  
+ fu= -145.837467 gd=   0.000000
+ en -143.5775  
+ fu= -143.577488 gd=   0.000000
+ en -143.3882  
+ fu= -143.388164 gd=   0.000000
+
+
+ Info> 2  pocket[s], g_pocket_Dock_5ZTY_rec1 .. g_pocket_Dock_5ZTY_rec2 found for  449  selected or displayed residues.
+ If you wanted the whole molecule, unselect and redo
+icm/Dock_5ZTY_rec>  if (Nof(POCKETS)>0) setLigandBoxGrob POCKETS.Type[1] a_LIG.I a_Dock_5ZTY_rec. no 3. 
+ Info> s_g_pocket,r_margin,os_rec,ms_lig,l_orient temp.variables deleted
+icm/Dock_5ZTY_rec> e3dSetReceptor a_Dock_5ZTY_rec. yes 1 yes yes "" no yes yes yes ( yes ? "covrestore" : "" ) 
+ Info> 0 Objects deleted
+ Info> copying object 'a_Dock_5ZTY_rec.' to 'a_temp.'
+ Info> Moving selection from object 'Dock_5ZTY_rec'  to object 'temp'
+ Info> [53] terminal phase angle at  a_Dock_5ZTY_rec_rec1.a/^A48/o  redefined to the torsion
+ Info> [53] terminal phase angle at  a_Dock_5ZTY_rec_rec1.a/^V121/o  redefined to the torsion
+ Info> [53] terminal phase angle at  a_Dock_5ZTY_rec_rec1.a/^F202/o  redefined to the torsion
+ Info> [53] terminal phase angle at  a_Dock_5ZTY_rec_rec1.a/^S292/o  redefined to the torsion
+ mi_> icer= tolGradOK ncalls= 2 func= 0.000000 grad= 0.000000 "tz"
+ Info> a_Dock_5ZTY_rec_rec1.a/^C174/sg <--> a_Dock_5ZTY_rec_rec1.a/^C179/sg  disulfide bond restored
+ Info> object a_temp. converted to a_Dock_5ZTY_rec_rec1. (s_out) with rmsd of 0.00 (r_out)
+  Info> 1 Object deleted
+ Info> 16 sites removed from a_Dock_5ZTY_rec_rec1.a
+ Info> 16 selected sites removed
+ Info> s_newObjName,rs_,os_,obna,l_optHis,l_optExistingHyd,l_maskMissing,Dock_5ZTY_rec_rec1_a temp.variables deleted
+ Info> finished surface search, n_of surface atoms = 1959
+ Info> finished basic surface element calculations
+ Total nr -0.209779 -0.136457 0.919447
+ Total nr -0.454673 -1.482823 1.840356
+ Info> new number of surface atoms = 1255
+ Info> number of surface patches =16701
+ Info> PBCG: iter=1 err=49.5%
+ Info> PBCG: iter=3 err= 6.1%
+ Info> PBCG: iter=6 err=12.8%
+ Info> PBCG: iter=7 err=15.9%
+ Info> PBCG: iter=8 err= 7.0%
+ Info> PBCG: iter=9 err= 4.9%
+ Info> PBCG: iter=10 err= 0.7%
+ Info> PBCG: iter=11 err=12.1%
+ Info> PBCG: iter=12 err=23.4%
+ Info> PBCG: iter=13 err= 1.2%
+ Info> PBCG: iter=14 err= 0.3%
+ Info> PBCG: iter=15 err= 0.2%
+ Info> PBCG: iter=16 err= 0.5%
+ Info> PBCG: iter=17 err= 0.2%
+ Info> PBCG: iter=18 err= 0.1%
+ Info> PBCG: iter=19 err= 0.4%
+ Info> PBCG: iter=20 err= 0.0%
+ Info> PBCG: iter=21 err= 0.0%
+ Info> PBCG: iter=22 err= 0.0%
+ Info> PBCG: iter=23 err= 0.0%
+ Positive correction> 0.978191
+ Info> PBCG: iter=3 err= 9.4%
+ Info> PBCG: iter=6 err= 9.8%
+ Info> PBCG: iter=7 err=14.0%
+ Info> PBCG: iter=8 err=11.1%
+ Info> PBCG: iter=10 err= 0.7%
+ Info> PBCG: iter=11 err= 3.7%
+ Info> PBCG: iter=12 err=11.0%
+ Info> PBCG: iter=13 err= 0.4%
+ Info> PBCG: iter=14 err= 0.2%
+ Info> PBCG: iter=15 err= 0.3%
+ Info> PBCG: iter=16 err= 0.1%
+ Info> PBCG: iter=17 err= 0.2%
+ Info> PBCG: iter=18 err= 0.1%
+ Info> PBCG: iter=19 err= 0.1%
+ Info> PBCG: iter=20 err= 0.1%
+ Info> PBCG: iter=21 err= 0.0%
+ Negative correction> 0.978376
+ Solvation energy      = -125.823123 (r_out)
+ Total envelope area   = 7543.562593 (r_2out)
+ Total envelope charge = -0.119577
+ Total atomic charge   = 0.125997
+ Coulomb energy        = 0.000000
+ m_ge... done 
+ Info> Map m_ge created. GridStep=0.50 Dimensions: 45 49 48, Size=105840
+ m_gl... done 
+ Info> Maps m_gc m_gl created. GridStep=0.50 Dimensions: 45 49 48, Size=105840
+ m_gh... done 
+ Info> Map m_gh created. GridStep=0.50 Dimensions: 45 49 48, Size=105840
+ m_ge... done 
+ Info> Map m_ge created. GridStep=0.50 Dimensions: 45 49 48, Size=105840
+ m_gb... done 
+ Info> Map m_gb created. GridStep=0.50 Dimensions: 45 49 48, Size=105840
+ Info> Map m_gs created. GridStep=0.50 Dimensions: 45 49 48, Size=105840
+icm/Dock_5ZTY_rec_rec1> if ( Nof( Select( a_LIG.// "_LIGCOV_" ) ) == 1 ) processLigandICM a_LIG.I "minimize" Sarray() no 
+icm/Dock_5ZTY_rec_rec1> undisplay box 
+icm/Dock_5ZTY_rec_rec1> undisplay store g_pocket_Dock_5ZTY_rec1
+icm/Dock_5ZTY_rec_rec1> center static
+icm/Dock_5ZTY_rec_rec1> center static
+icm/Dock_5ZTY_rec_rec1> openFile "/Users/aoxu/projects/anchnor_based_VSYNTHES/combiDock_R1.sdf" 0 yes no no no " append" 
+6 6 mol,sdf,sd,rdf 
+global read table mol "/Users/aoxu/projects/anchnor_based_VSYNTHES/combiDock_R1.sdf"
+ Info> table 'combiDock_R1' ( 0 headers, 1 arrays[8]) created
+icm/Dock_5ZTY_rec_rec1> if (Type(Rgroup) == "unknown") chemLoadFilterSystemRgroupDB "" no 
+icm/Dock_5ZTY_rec_rec1> s_out = String( yes ) + "=" + String( 7.0 ) 
+icm/Dock_5ZTY_rec_rec1> processLigandICM a_LIG.I & ( Nof(as_graph) == 0 ? a_LIG. : as_graph ) "findgroupTab" + "1" Sarray( 1 Name( combiDock_R1 table ) ) // s_out yes nProc = 0 
+ Info>  c_params  kept
+ Info> occupancy, bfactor, charge, graphical masks and planes, properties, toty toap tobl masks : optional data were saved
+ Info> occupancy, bfactor, charge, graphical masks and planes, properties, toty toap tobl masks : optional data were saved
+ Info> 20 icm shell objects saved to /var/folders/bb/dyy85zps4_lg79d6g6g48ms00000gn/T/lig7912.icb
+/Applications/MolsoftICM64.app/Contents/MacOS/icm64 -P/Applications/MolsoftICM64.app/Contents/Resources/icm/ /Applications/MolsoftICM64.app/Contents/Resources/icm/_ligedit_bg /var/folders/bb/dyy85zps4_lg79d6g6g48ms00000gn/T/lig7912.icb /var/folders/bb/dyy85zps4_lg79d6g6g48ms00000gn/T/lig7912_out.icb proc=0 
+ Info> s_grTable,s_fout,s_fin,s_cmd,s_action,l_bg,as_sel,S_params,S_arg temp.variables deleted
+icm/Dock_5ZTY_rec_rec1> if (Type(modifiersTab)=='table') rename modifiersTab Name('modifiersTab' unique )
+icm/Dock_5ZTY_rec_rec1> read binary '/var/folders/bb/dyy85zps4_lg79d6g6g48ms00000gn/T/lig7912_out.icb'
+ Info> 1 shell objects read (skipped 0) from /var/folders/bb/dyy85zps4_lg79d6g6g48ms00000gn/T/lig7912_out.icb
+icm/Dock_5ZTY_rec_rec1> delete system '/var/folders/bb/dyy85zps4_lg79d6g6g48ms00000gn/T/lig7912_out.icb'//'/var/folders/bb/dyy85zps4_lg79d6g6g48ms00000gn/T/lig7912.icb'
+ Info> file '/var/folders/bb/dyy85zps4_lg79d6g6g48ms00000gn/T/lig7912_out.icb' removed
+ Info> file '/var/folders/bb/dyy85zps4_lg79d6g6g48ms00000gn/T/lig7912.icb' removed
+icm/Dock_5ZTY_rec_rec1> set foreground modifiersTab
+icm/Dock_5ZTY_rec_rec1> dsChemLock_new "modifiersTab" "modifiersTab" 1 yes
+ Warning> [18] atom a_m_1.m/1/n4 has 2 single bonds, assuming formal charge FC=-1
+ Warning> [27] using formal charge= 0   for a_m_1.m/1/n4 [MMFFcode=76]
+icm/m_1> dsChemLock_new "modifiersTab" "modifiersTab" 2 yes
+ Warning> [18] atom a_m_2.m/1/n4 has 2 single bonds, assuming formal charge FC=-1
+ Warning> [27] using formal charge= 0   for a_m_2.m/1/n4 [MMFFcode=76]
+icm/m_2> if (Type(Rgroup) == "unknown") chemLoadFilterSystemRgroupDB "" no 
+icm/m_2> s_out = String( yes ) + "=" + String( 7.0 ) 
+icm/m_2> processLigandICM a_LIG.I & ( Nof(as_graph) == 0 ? a_LIG. : as_graph ) "findgroupTab" + "2" Sarray( 1 Name( combiDock_R1 table ) ) // s_out yes nProc = 0 
+ Info>  c_params  kept
+ Info> occupancy, bfactor, charge, graphical masks and planes, properties, toty toap tobl masks : optional data were saved
+ Info> occupancy, bfactor, charge, graphical masks and planes, properties, toty toap tobl masks : optional data were saved
+ Info> 20 icm shell objects saved to /var/folders/bb/dyy85zps4_lg79d6g6g48ms00000gn/T/lig0585.icb
+/Applications/MolsoftICM64.app/Contents/MacOS/icm64 -P/Applications/MolsoftICM64.app/Contents/Resources/icm/ /Applications/MolsoftICM64.app/Contents/Resources/icm/_ligedit_bg /var/folders/bb/dyy85zps4_lg79d6g6g48ms00000gn/T/lig0585.icb /var/folders/bb/dyy85zps4_lg79d6g6g48ms00000gn/T/lig0585_out.icb proc=0 
+ Info> s_grTable,s_fout,s_fin,s_cmd,s_action,l_bg,as_sel,S_params,S_arg temp.variables deleted
+icm/m_2> if (Type(modifiersTab)=='table') rename modifiersTab Name('modifiersTab' unique )
+icm/Dock_5ZTY_rec_rec1> read binary '/var/folders/bb/dyy85zps4_lg79d6g6g48ms00000gn/T/lig0585_out.icb'
+ Info> 1 shell objects read (skipped 0) from /var/folders/bb/dyy85zps4_lg79d6g6g48ms00000gn/T/lig0585_out.icb
+icm/Dock_5ZTY_rec_rec1> delete system '/var/folders/bb/dyy85zps4_lg79d6g6g48ms00000gn/T/lig0585_out.icb'//'/var/folders/bb/dyy85zps4_lg79d6g6g48ms00000gn/T/lig0585.icb'
+ Info> file '/var/folders/bb/dyy85zps4_lg79d6g6g48ms00000gn/T/lig0585_out.icb' removed
+ Info> file '/var/folders/bb/dyy85zps4_lg79d6g6g48ms00000gn/T/lig0585.icb' removed
+icm/Dock_5ZTY_rec_rec1> set foreground modifiersTab
+icm/Dock_5ZTY_rec_rec1> sort modifiersTab.NN_Score
+icm/Dock_5ZTY_rec_rec1> sort reverse modifiersTab.NN_Score
+icm/Dock_5ZTY_rec_rec1> sort modifiersTab.Score2
+icm/Dock_5ZTY_rec_rec1> sort modifiersTab.NN_Score
+icm/Dock_5ZTY_rec_rec1> 

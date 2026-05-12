@@ -1,0 +1,53 @@
+# Big data
+csv/*.csv
+*.sdf
+*.icb
+*.ob
+*.pkl
+*.map
+*.dtb
+*.mol2
+*.cif
+*.pdb
+
+# Generated outputs
+results/
+results_carc/
+results_katlab/
+results_local_macos/
+archive/
+selina/
+CB2_5ZTY/
+CB2_5ZTY_debug/
+GPR91/
+maps/
+synthons/
+al_benchmark*/results.csv
+al_benchmark*/summary.tsv
+al_benchmark_gpr91/wenjin_reproduction_results.csv
+oracle/srg_scores.csv
+oracle/coverage.tsv
+
+# Notebook checkpoints
+notebooks/**/*.ipynb_checkpoints/
+
+# Sync infra (already excluded from CARC sync via .sync/exclude.txt)
+.sync/conflicts/
+.sync/logs/
+.sync/sync.lock
+.predigest/
+.predigest.*/
+
+# Python / editor / OS
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
+.vscode/
+.claude/
+.mypy_cache/
+.pytest_cache/
+
+# Project pre-existing per-target data
+data_prep/pipeline_test/maps/
+data_prep/pipeline_test/results/

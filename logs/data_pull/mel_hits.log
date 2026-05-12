@@ -1,0 +1,20 @@
+2026/04/27 21:07:11 [3784666] receiving file list
+2026/04/27 21:07:11 [3784694] .d..t...... ./
+2026/04/27 21:07:11 [3784694] >f+++++++++ CB2-5ZTY-Top1K-MEL-ICMPrepared.sdf
+2026/04/27 21:07:11 [3784694] >f+++++++++ CB2-5ZTY-Top1K-MEL.sdf
+2026/04/27 21:07:11 [3784694] >f+++++++++ CB2_5ZTY_ICM393_Eff2_2Comp_MEL_Top1000_Hits.icb
+2026/04/27 21:07:12 [3784694] Number of files: 4 (reg: 3, dir: 1)
+2026/04/27 21:07:12 [3784694] Number of created files: 3 (reg: 3)
+2026/04/27 21:07:12 [3784694] Number of deleted files: 0
+2026/04/27 21:07:12 [3784694] Number of regular files transferred: 3
+2026/04/27 21:07:12 [3784694] Total file size: 25.90M bytes
+2026/04/27 21:07:12 [3784694] Total transferred file size: 25.90M bytes
+2026/04/27 21:07:12 [3784694] Literal data: 25.90M bytes
+2026/04/27 21:07:12 [3784694] Matched data: 0 bytes
+2026/04/27 21:07:12 [3784694] File list size: 186
+2026/04/27 21:07:12 [3784694] File list generation time: 0.002 seconds
+2026/04/27 21:07:12 [3784694] File list transfer time: 0.000 seconds
+2026/04/27 21:07:12 [3784694] Total bytes sent: 84
+2026/04/27 21:07:12 [3784694] Total bytes received: 25.90M
+2026/04/27 21:07:12 [3784694] sent 84 bytes  received 25.90M bytes  10.36M bytes/sec
+2026/04/27 21:07:12 [3784694] total size is 25.90M  speedup is 1.00

@@ -1,0 +1,29 @@
+.sync/
+.claude/
+.git/
+.predigest/
+__pycache__/
+# Wenjin's code mirror. On CARC, selina/ is a symlink to
+# /project2/katritch_223/selina/SmartEnum/; on the NAS it's a slim
+# real dir populated by .sync/selina-pull.sh. We exclude it from the
+# bidirectional aoxu↔CARC sync to avoid (a) propagating a broken
+# symlink onto the NAS, and (b) the NAS-side slim copy overwriting
+# Wenjin's real tree on CARC.
+selina/
+**/__pycache__/
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ipynb_checkpoints/
+**/build/
+**/dist/
+**/*.egg-info/
+**/.venv/
+**/venv/
+**/wandb/
+**/tmp/
+**/.DS_Store
+
+# Big production data — too large to round-trip to CARC, and the upstream
+# source already lives on CARC at /project2/katritch_223/selina/SmartEnum/CB2/.
+CB2_5ZTY/compatible_syntons/
+CB2_5ZTY/enumerated_products/

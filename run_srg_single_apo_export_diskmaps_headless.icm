@@ -1,0 +1,223 @@
+call _startup
+show version
+
+# =============================================================================
+# run_srg_single_apo_export_diskmaps_headless.icm  --  icmng-compatible
+#   (NoGraphics / no-DISPLAY) variant of run_srg_single_apo_export_diskmaps.icm.
+#
+# DELTA vs. the GUI template: the nine `openFile` calls used to load the
+# receptor .ob, the six grid .map files, and the two SDF tables are
+# replaced with the non-GUI equivalents that icmng links in:
+#   openFile X_rec.ob ...  ->  read object X_rec.ob
+#   openFile X.map    ...  ->  read map    X.map
+#   openFile X.sdf    ...  ->  read table mol X.sdf name="<stem>"
+# The `name=` argument on `read table mol` is required to reproduce the
+# stem-based auto-naming that `openFile` does for SDFs; the subsequent
+# template logic expects those exact names to match the assignments at
+# s_mel_table and s_synthon_table below.
+# Empirically verified on KatLab 2026-04-20 with icmng 3.9-4.
+#
+# Every other command in this template (e3dSetLigand, processLigandICM,
+# rename, set field, unix, read binary of lig*_out.icb, write table mol)
+# works unchanged under icmng -- no further edits were needed.
+#
+# EXPECTED INPUT LAYOUT (V-SYNTHES docking-project convention):
+#   <s_map_dir>/<s_dock_name>_rec.ob       -- receptor object (prepared)
+#   <s_map_dir>/<s_dock_name>_gc.map       -- 6 grid maps
+#   <s_map_dir>/<s_dock_name>_gh.map
+#   <s_map_dir>/<s_dock_name>_gl.map
+#   <s_map_dir>/<s_dock_name>_ge.map
+#   <s_map_dir>/<s_dock_name>_gb.map
+#   <s_map_dir>/<s_dock_name>_gs.map
+#   <s_map_dir>/<s_dock_name>.dtb          -- docking table (box dims, etc.)
+#
+# RUN:
+#   unset DISPLAY XAUTHORITY
+#   /path/to/icmng run_srg_single_apo_export_diskmaps_headless.icm
+# =============================================================================
+
+s_map_dir       = "/Users/aoxu/projects/anchnor_based_VSYNTHES/maps"
+s_dock_name     = "Dock_5ZTY"
+s_receptor_name = "Dock_5ZTY_rec"
+
+s_edited_mel    = "/Users/aoxu/projects/anchnor_based_VSYNTHES/final_table_edited.sdf"
+i_mel_row       = 2
+s_synthon_sdf   = "/Users/aoxu/projects/anchnor_based_VSYNTHES/combiDock_R1.sdf"
+s_results_dir   = "/Users/aoxu/projects/anchnor_based_VSYNTHES/results"
+
+# =============================================================================
+# Step 1 - Load the receptor object and the six grid maps as individual files.
+#          `read object` loads the .ob as a single-object binary and
+#          `read map` loads the grid-map binary. For .map, the loaded
+#          variable is named `m_<filename_stem>` -- so Dock_5ZTY_gc.map
+#          arrives as `m_Dock_5ZTY_gc`, NOT `m_gc`. We must rename
+#          (next step) before scoring, because ICM's scoring engine and
+#          e3dSetTerms look up map terms by the canonical names
+#          `m_gc/m_gh/m_gl/m_ge/m_gb/m_gs`.
+# =============================================================================
+read object s_map_dir + "/" + s_dock_name + "_rec.ob"
+read map s_map_dir + "/" + s_dock_name + "_gb.map"
+read map s_map_dir + "/" + s_dock_name + "_gc.map"
+read map s_map_dir + "/" + s_dock_name + "_ge.map"
+read map s_map_dir + "/" + s_dock_name + "_gh.map"
+read map s_map_dir + "/" + s_dock_name + "_gl.map"
+read map s_map_dir + "/" + s_dock_name + "_gs.map"
+
+# =============================================================================
+# Step 1b - CRITICAL FIX: rename the loaded maps to canonical names.
+#
+#   e3dSetTerms (_ligedit:723) builds its active-terms string via:
+#       s_terms += Info(term map)
+#   Info(term, map) introspects which map-based terms ICM currently
+#   recognizes. It returns non-empty only when the standard-named globals
+#   (m_gc, m_gh, m_gl, m_ge, m_gb, m_gs) exist. Without the rename,
+#   Info(term, map) returns empty -> map terms stay disabled -> the
+#   `nn` and `gc` scoring terms at _ligedit:4887 / 1206 / 2682
+#   (`show energy atom Info(term,map) a_`, `show energy mute "nn,gc"`)
+#   throw "syntax error" warnings and modifiersTab.NN_Score is uniformly 0.
+#
+#   The cache guard at _ligedit:1385 (`if( Type(m_gc)=="map" )`) also uses
+#   the canonical name -- renaming makes the cache coherent for future
+#   re-entries into e3dCalcMaps.
+#
+#   `rename` is the standard ICM idiom for renaming a live variable
+#   (see _ligedit:1437 `rename m_gh "m_ghtt"`, etc.).
+# =============================================================================
+s_src = "m_" + s_dock_name + "_gc"
+rename $s_src "m_gc"
+s_src = "m_" + s_dock_name + "_gh"
+rename $s_src "m_gh"
+s_src = "m_" + s_dock_name + "_gl"
+rename $s_src "m_gl"
+s_src = "m_" + s_dock_name + "_ge"
+rename $s_src "m_ge"
+s_src = "m_" + s_dock_name + "_gb"
+rename $s_src "m_gb"
+s_src = "m_" + s_dock_name + "_gs"
+rename $s_src "m_gs"
+
+if (Type(m_gc) != "map") then
+    print "ERROR: m_gc is not a map after rename. Check that maps loaded under the expected names."
+    quit
+endif
+print "Info> maps renamed to canonical names (m_gc/m_gh/m_gl/m_ge/m_gb/m_gs)"
+
+# =============================================================================
+# Step 2 - Point LIGAND.receptor at the loaded receptor object and set the
+#          docking box. These would normally be set by e3dSetReceptor at
+#          _ligedit:826 and by setLigandBoxGrob respectively.
+#
+#          Box values below come from the .dtb (docking-table binary)
+#          R_boxDim field. If you rebuild the maps against a different
+#          pocket, REPLACE these six numbers to match the new .dtb.
+# =============================================================================
+LIGAND.receptor = "a_" + s_receptor_name + "."
+LIGAND.box      = { -1.963, -13.427, -67.066, 21.822, 11.483, -45.586 }
+
+# =============================================================================
+# Step 3 - CRITICAL FIX: assign the `_REC_` field on the receptor atoms.
+#
+#   This is the one-line replica of _ligedit:828. Without it, a_REC. is
+#   empty and e3dSet_nnInterMod (invoked by processLigandICM findgroupTab1
+#   at _ligedit:2115) skips its setup loop, leaving the RTCNN model unbound
+#   -> modifiersTab.NN_Score is uniformly 0.
+#
+#   Also set _ORIGREC_ for parity with _ligedit:829 (used by some downstream
+#   macros to recover the original receptor name).
+# =============================================================================
+set field a_$s_receptor_name. name = "_REC_"
+if (Nof(a_REC.) == 1) set field a_REC. name = "_ORIGREC_" s_receptor_name
+
+# Sanity check: a_REC. must resolve to >0 atoms for NN scoring to bind.
+if (Nof(a_REC.) == 0) then
+    print "ERROR: a_REC. is empty after setting _REC_ field. Check that "
+    print "       the .ob file loaded under object name '" + s_receptor_name + "'."
+    print "       (Object list:) "
+    print Name(a_*.)
+    quit
+endif
+print "Info> a_REC. resolves to " + String(Nof(a_REC.)) + " atoms"
+print "Info> LIGAND.receptor = " + LIGAND.receptor
+
+# =============================================================================
+# Step 4 - Load the MEL and pull row i_mel_row into a 3D object.
+# =============================================================================
+read table mol s_edited_mel name="final_table_edited"
+s_mel_table = "final_table_edited"
+dsChemLock_new s_mel_table s_mel_table i_mel_row yes
+
+as_out = a_m.
+if (Nof(Obj(as_out)) > 1) as_out = as_out & Obj(as_out)[1]
+e3dSetLigand as_out yes yes 7.0 yes
+
+# =============================================================================
+# Step 5 - Load the synthon library
+# =============================================================================
+read table mol s_synthon_sdf name="combiDock_R1"
+s_synthon_table = "combiDock_R1"
+
+s_out_sdf = s_results_dir + "/MEL_" + String(i_mel_row) + "_" + s_synthon_table + "_enumerated_diskmaps.sdf"
+
+if (Type(Rgroup) == "unknown") chemLoadFilterSystemRgroupDB "" no
+
+# =============================================================================
+# Step 6 - Run Screen Replacement Group. Same call as the cached variant.
+#          processLigandICM findgroupTab1 will call e3dSet_nnInterMod
+#          internally (_ligedit:2115), which now finds a_REC. non-empty and
+#          binds nnInterMod via `set energy nnInterMod a_REC.`.
+# =============================================================================
+as_graph = a_LIG.m/1/x1
+s_out = String(yes) + "=" + String(7.4)
+
+processLigandICM a_LIG.I & (Nof(as_graph) == 0 ? a_LIG. : as_graph) "findgroupTab" + "1" Sarray(1 Name($s_synthon_table table)) // s_out yes nProc = 0
+
+# processLigandICM with l_bg=yes spawns _ligedit_bg via `make background
+# s_cmd ... command=s_out` (_ligedit:2752) and returns immediately. The
+# `command=` callback (which does `read binary <s_fout>` + `set foreground
+# modifiersTab`) fires only when ICM's Qt event loop picks it up. In -g
+# batch mode the event loop doesn't drain between script statements, so
+# the callback never runs and modifiersTab stays unpopulated.
+#
+# `wait background` blocks until the BG subprocess exits (the output .icb
+# is written to $s_tempDir/lig<PID>_out.icb). After that we bypass the
+# callback entirely: find the newest lig*_out.icb in $s_tempDir (which,
+# since the subprocess just finished, is ours) and load it ourselves.
+# This mirrors the pattern in _ligedit_bg:91-109, qsearch.icm:53-62,
+# enum_space_MEL.icm:129-134 -- wait + manual read.
+wait background
+
+# _ligedit_bg writes per-chunk outputs lig<PID>_out<FROM>_<TO>.icb AND a
+# merged lig<PID>_out.icb when processLigandICM was called with l_bg=yes
+# nProc=0. `ls -t lig*_out*.icb | head -1` picks the newest -- which is
+# the merged coordinator output, since it's written last.
+s_latest = s_results_dir + "/_latest_out_icb.txt"
+s_cmd = "ls -t " + s_tempDir + "lig*_out*.icb 2>/dev/null | head -1 > " + s_latest
+unix $s_cmd
+read string s_latest name="s_foutRaw"
+s_fout = Trim(s_foutRaw)
+delete system s_latest l_warn = no
+
+if (!Exist(s_fout)) then
+    print " ERROR> no lig*_out*.icb in " + s_tempDir + " -- subprocess produced no output"
+    quit
+endif
+print " Info> reading subprocess output from " + s_fout
+read binary s_fout
+delete system s_fout l_warn = no
+
+# =============================================================================
+# Step 7 - Sort and export
+# =============================================================================
+if (!Exist(s_results_dir)) make directory s_results_dir
+
+if (Type(modifiersTab) != "table") then
+    print " ERROR> read binary did not produce modifiersTab (fout=" + s_fout + ")"
+else
+    sort reverse modifiersTab.NN_Score
+    # `chemSdfExport` is a Mac-only command; `write table mol` works on both
+    # Mac and Linux ICM 3.9-4 (verified 2026-04-20).
+    write table mol modifiersTab s_out_sdf
+    print " Info> exported " + String(Nof(modifiersTab)) + " rows to " + s_out_sdf
+endif
+
+quit

@@ -1,0 +1,102 @@
+call _startup
+show version
+
+# =============================================================================
+# run_ICM_ScreenReplacement_SingleMEL_NoGUI_NoParallel.icm
+#   Foreground (l_bg=no, single-core) NoGUI / icmng-compatible variant.
+#   Adopted from Wenjin/Selina's template; paths localized + inline LIGAND.box.
+#
+#   Use when: you want a single MEL row scored against a small synthon library
+#   on a Linux node without DISPLAY (icmng), and you don't need parallelism.
+#   For the parallel-subprocess variant on the same loader path, use
+#   run_ICM_ScreenReplacement_SingleMEL_NoGUI_Parallel.icm instead.
+# =============================================================================
+
+s_map_dir       = "/Users/aoxu/projects/anchnor_based_VSYNTHES/maps"
+s_dock_name     = "Dock_5ZTY"
+s_receptor_name = "Dock_5ZTY_rec"
+
+s_edited_mel    = "/Users/aoxu/projects/anchnor_based_VSYNTHES/final_table_edited.sdf"
+i_mel_row       = 2
+s_mel_table     = "final_table_edited"
+
+s_synthon_sdf   = "/Users/aoxu/projects/anchnor_based_VSYNTHES/combiDock_R1.sdf"
+s_synthon_table = "combiDock_R1"
+
+s_results_dir   = "/Users/aoxu/projects/anchnor_based_VSYNTHES/results"
+
+# =============================================================================
+# Step 1 - Load receptor + 6 grid maps via NoGUI loaders, then rename to
+#          canonical m_g{c,h,l,e,b,s} so the ICM scoring engine finds them.
+# =============================================================================
+read object s_map_dir + "/" + s_dock_name + "_rec.ob"
+read map s_map_dir + "/" + s_dock_name + "_gb.map"
+read map s_map_dir + "/" + s_dock_name + "_gc.map"
+read map s_map_dir + "/" + s_dock_name + "_ge.map"
+read map s_map_dir + "/" + s_dock_name + "_gh.map"
+read map s_map_dir + "/" + s_dock_name + "_gl.map"
+read map s_map_dir + "/" + s_dock_name + "_gs.map"
+
+s_src = "m_" + s_dock_name + "_gc"
+rename $s_src "m_gc"
+s_src = "m_" + s_dock_name + "_gh"
+rename $s_src "m_gh"
+s_src = "m_" + s_dock_name + "_gl"
+rename $s_src "m_gl"
+s_src = "m_" + s_dock_name + "_ge"
+rename $s_src "m_ge"
+s_src = "m_" + s_dock_name + "_gb"
+rename $s_src "m_gb"
+s_src = "m_" + s_dock_name + "_gs"
+rename $s_src "m_gs"
+
+# =============================================================================
+# Step 2 - Point LIGAND.receptor at the loaded receptor object and set the
+#          docking box. CB2/5ZTY box; replace per target.
+# =============================================================================
+LIGAND.receptor = "a_" + s_receptor_name + "."
+LIGAND.box      = { -1.963, -13.427, -67.066, 21.822, 11.483, -45.586 }
+
+# =============================================================================
+# Step 3 - Load the preprocessed MEL SDF + lock row i_mel_row as object 'm'.
+# =============================================================================
+read table mol s_edited_mel name=s_mel_table
+dsChemLock_new s_mel_table s_mel_table i_mel_row yes
+
+as_out = a_m.
+e3dSetLigand as_out yes yes 7.0 yes
+
+# =============================================================================
+# Step 4 - Load synthon library + run Screen Replacement Group foreground.
+# =============================================================================
+read table mol s_synthon_sdf name=s_synthon_table
+
+as_graph = a_LIG.m/1/x1
+if (Nof(as_graph) == 0) then
+    print "ERROR: attachment atom a_LIG.m/1/x1 not found. Check MEL APO preprocessing."
+    quit
+endif
+
+s_scoring_mode = "findgroupTab1"
+s_autocharge   = String(yes) + "=" + String(7.4)
+S_params       = Sarray( 1 Name( $s_synthon_table table ) )
+S_params       = S_params // s_autocharge
+
+processLigandICM as_graph s_scoring_mode S_params no
+
+# =============================================================================
+# Step 5 - Sort + export. Foreground call populates modifiersTab directly.
+# =============================================================================
+if (!Exist(s_results_dir)) make directory s_results_dir
+s_out_sdf = s_results_dir + "/enumerated.sdf"
+
+if (Type(modifiersTab) != "table") then
+    print " ERROR> modifiersTab not populated after foreground run."
+    quit
+endif
+
+sort reverse modifiersTab.NN_Score
+write table mol modifiersTab s_out_sdf
+print " Info> exported " + String(Nof(modifiersTab)) + " rows to " + s_out_sdf
+
+quit

@@ -1,0 +1,10 @@
+==========================================
+SLURM_JOB_ID = 8263527
+SLURM_JOB_NODELIST = b04-03
+TMPDIR = /tmp/SLURM_8263527
+==========================================
+[2026-04-21T21:25:06-07:00] host=b04-03.hpc.usc.edu  job=8263527  task=1  row=2  template=headless  tmpdir=/scratch1/aoxu/icm_tmp/8263527/1
+MEL row 2 -> results_carc/MEL_2_Rank2  template=headless  env=carc
+  [row 2] exit=1  elapsed=160.8s  records=3650  nonzero_NN=3650
+    WARN: ICM exit=1 but 3650 records with 3650 nonzero scores — likely benign Linux ICM shutdown crash
+status: ok_dirty_exit  records=3650  wall=161.0s

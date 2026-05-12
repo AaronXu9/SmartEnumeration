@@ -1,0 +1,202 @@
+call _startup
+show version
+# ============================================================================= # run_srg_single_apo_export_diskmaps.icm # Runs ICM Screen Replacement Group for one MEL row against a synthon library. # ============================================================================= 
+s_map_dir     = "/Users/aoxu/projects/anchnor_based_VSYNTHES/maps"
+s_dock_name   = "Dock_5ZTY"
+s_receptor_name = "Dock_5ZTY_rec"
+
+
+s_edited_mel    = "/Users/aoxu/projects/anchnor_based_VSYNTHES/final_table_edited.sdf"
+i_mel_row       = 2
+s_mel_table = "final_table_edited"
+
+# Small debug library (24 rows) -- active
+# s_synthon_sdf   = "/Users/aoxu/projects/anchnor_based_VSYNTHES/combiDock_R1.sdf"
+# s_synthon_table = "combiDock_R1"
+# Full Rank2 library (4994 rows) -- commented for debug
+s_synthon_sdf   = "/Users/aoxu/projects/anchnor_based_VSYNTHES/synthons/Rank2_ICMInChiKey_ZMPONTLLTHXELC_DBJRSSSESA_N_OpenVSInChiKey_PZFZAQZJNLNUMX-SKFUDWBVSA-N_surviving_synthons_ICMReady_APO.sdf"
+s_synthon_table = "Rank2_ICMInChiKey_ZMPONTLLTHXELC_DBJRSSSESA_N_OpenVSInChiKey_PZFZAQZJNLNUMX_SKFUDWBVSA_N_surviving_synthons_ICMReady_APO"
+
+s_results_dir  = "/Users/aoxu/projects/anchnor_based_VSYNTHES/results"
+
+# Docking box corners {xmin, ymin, zmin, xmax, ymax, zmax} in Angstroms.
+# Derived from the CB2_5ZTY pocket; adjust per target.
+R_pocket_box = { -1.963, -13.427, -67.066, 21.822, 11.483, -45.586 }
+
+# =============================================================================
+# Step 1 - Load the receptor object and the six grid maps as individual files.
+#          We must rename (next step) before
+#          scoring, because ICM's scoring engine and e3dSetTerms look up
+#          map terms by the canonical names `m_gc/m_gh/m_gl/m_ge/m_gb/m_gs`.
+# =============================================================================
+openFile s_map_dir + "/" + s_dock_name + "_rec.ob"   0 yes no no no " append"
+openFile s_map_dir + "/" + s_dock_name + "_gb.map"   0 yes no no no " append"
+openFile s_map_dir + "/" + s_dock_name + "_gc.map"   0 yes no no no " append"
+openFile s_map_dir + "/" + s_dock_name + "_ge.map"   0 yes no no no " append"
+openFile s_map_dir + "/" + s_dock_name + "_gh.map"   0 yes no no no " append"
+openFile s_map_dir + "/" + s_dock_name + "_gl.map"   0 yes no no no " append"
+openFile s_map_dir + "/" + s_dock_name + "_gs.map"   0 yes no no no " append"
+
+s_src = "m_" + s_dock_name + "_gc"
+rename $s_src "m_gc"
+s_src = "m_" + s_dock_name + "_gh"
+rename $s_src "m_gh"
+s_src = "m_" + s_dock_name + "_gl"
+rename $s_src "m_gl"
+s_src = "m_" + s_dock_name + "_ge"
+rename $s_src "m_ge"
+s_src = "m_" + s_dock_name + "_gb"
+rename $s_src "m_gb"
+s_src = "m_" + s_dock_name + "_gs"
+rename $s_src "m_gs"
+
+# =============================================================================
+# Step 2 - Load Preprocessed MEL Frags (Cap Group Deleted & Replacement Atom Added)
+# =============================================================================
+
+openFile s_edited_mel 0 yes no no no " append"
+dsChemLock_new s_mel_table s_mel_table i_mel_row yes
+
+as_out = a_m.
+if ( Nof( Obj( as_out ) ) > 1 ) then
+    print "ERROR: more than one MEL fragment object selected. Expected exactly 1. Please check dsChemLock_new loaded the correct row."
+    print "Objects found: " + String( Nof( Obj( as_out ) ) )
+    stop
+endif
+
+e3dSetLigand as_out yes yes 7.0 yes
+
+# =============================================================================
+# Step 2 - Setup Protein
+# Point LIGAND.receptor at the loaded receptor object and set the docking box.
+# Prepare receptor without recalculating maps. l_calcmaps=no skips map regeneration 
+
+# Argument 1  (os_sel):            a_$s_receptor_name.
+#             the receptor object to prepare
+#             e3dSetReceptor intersects this with LIGAND.box to find pocket residues
+#             then truncates and converts it to ICM internal coordinates as _rec1
+# Argument 2  (l_calcmaps):        no
+#             do NOT recompute grid maps (m_gc, m_gh, m_gl, m_ge, m_gb, m_gs)
+#             we already loaded pre-computed maps in Step 1
+#             setting yes would rerun PBCG and full map generation — expensive
+# Argument 3  (i_keepWater):       1
+#             water handling mode:
+#             1 = keep waters but delete weak ones (deleteWeakWaters, default)
+#             3 = strip all waters entirely
+# Argument 4  (l_display):         no
+#             do NOT update the GUI display after preparation
+# Argument 5  (l_makeLigandPocket): no
+#             do NOT compute and store a ligand pocket surface mesh 
+# Argument 6  (s_edsMapName):      ""
+#             name for an electron density map to associate with the receptor
+#             empty string = no electron density map
+# Argument 7  (l_optExistingHyd):  no
+#             do NOT re-optimize existing hydrogen positions
+# Argument 8  (l_optHis):          yes
+#             optimize histidine protonation states (HID/HIE/HIP assignment)
+#             yes = let ICM pick the best tautomer for each His in the pocket
+# Argument 9  (l_truncateRec):     yes
+#             truncate the receptor to only residues within Box(LIGAND.box, 2.0)
+#             this creates the compact _rec1 object used by the scoring engine
+# Argument 10 (l_maskMissing):     yes
+#             mask missing residue termini with caps
+#             yes = add proper terminal capping groups where chain breaks occur
+# Argument 11 (s_opt):             ""
+#             optional special mode string
+#             "covrestore" would restore covalent ligand bonds after preparation
+#             empty string = standard non-covalent docking setup
+# ============================================================================= 
+LIGAND.box      = R_pocket_box
+e3dSetReceptor a_$s_receptor_name. no 1 no no "" no yes yes yes ""
+LIGAND.receptor = "a_" + s_receptor_name + "_rec1."
+
+# =============================================================================
+# Step 3 - Load the synthon library & Call ICM Screen Replacement Group
+# macro processLigandICM as_sel s_action S_params l_bg 
+
+# Run ICM Screen Replacement Group on the MEL scaffold
+# Argument 1 (as_sel):    as_graph = a_LIG.m/1/x1
+#                         the single x1 attachment atom on the scaffold
+#                         this is the exact position where each synthon will be grown
+# Argument 2 (s_action):  "findgroupTab1"
+#                         screen from a user-provided table
+#                         trailing "1" sets nn_only=yes: RTCNN intermolecular score only (Mode 1, faster)
+#                         trailing "2" would use full score including internal strain (Mode 2, slower)
+# Argument 3 (S_params):  two-element string array
+#                         [1] Name($s_synthon_table table) — string name of the loaded synthon SDF table
+#                         [2] "yes=7.4"                   — autocharge flag and pH passed into scoring loop. Tells ICM to protonate each synthon at pH 7.4 before scoring
+
+# Argument 4 (l_bg):     yes 
+#                        run as background subprocess via _ligedit_bg 
+#                        uses all available CPU cores (nProc = 0) 
+#                        call returns immediately — results arrive asynchronously in modifiersTab
+
+# When you call e3dSetLigand and e3dSetReceptor, 
+# During this process ICM renames the attachment point dummy atom from a1 to x1 — 
+# The x1 label is ICM's own internal name for the same atom after it has been processed into the ligand object m_lig.
+# =============================================================================
+openFile s_synthon_sdf 0 yes no no no " append"
+as_graph = a_LIG.m/1/x1
+if (Nof(as_graph) == 0) then
+    print "ERROR: attachment atom not found on the loaded MEL fragment."
+    print "       ICM Screen Replacement Group requires exactly one atom"
+    print "       at the R-group position. Check that the MEL preprocessing"
+    print "       step correctly deleted the cap and added the dummy atom."
+    stop
+endif
+
+s_scoring_mode = "findgroupTab1"  
+
+s_autocharge = String(yes) + "=" + String(7.4)
+S_params = Sarray( 1 Name( $s_synthon_table table ) )
+S_params = S_params // s_autocharge
+
+# l_bg=no: run foreground (synchronous).  The background path (l_bg=yes)
+# requires the Qt event loop to fire the command= callback that loads results
+# back into modifiersTab — that callback never fires in -g batch mode.
+# With l_bg=no, processLigandICM runs the findgroupTab1 loop inline
+# (_ligedit:2419+) and returns only after modifiersTab is populated.
+# No subprocess, no wait background, no temp .icb files to recover.
+# [v1] l_bg=yes nProc=0 — chunk workers ran but coordinator never merged
+# [v2] l_bg=yes nProc=1 — single subprocess but s_fout still not recovered
+# [v3] l_bg=no           — foreground, modifiersTab populated directly
+print " [v3] calling processLigandICM foreground (l_bg=no, single-core, no parallelism) ..."
+processLigandICM as_graph s_scoring_mode S_params yes nProc = 0
+
+# wait background, necessary for l_bg=yes to ensure 
+# the _ligedit_bg subprocess finishes and writes out its results before we try to read them back in. With l_bg=no, processLigandICM runs synchronously and modifiersTab is populated directly, so wait background is not strictly necessary, but we include it for safety in case of any asynchronous behavior in the GUI environment.
+
+
+wait background
+s_latest = s_results_dir + "/_latest_out_icb.txt"
+s_cmd = "ls -t " + s_tempDir + "lig*_out*.icb 2>/dev/null | head -1 > " + s_latest
+unix $s_cmd
+read string s_latest name="s_foutRaw"
+s_fout = Trim(s_foutRaw)
+delete system s_latest l_warn = no
+if (!Exist(s_fout)) then
+    print " ERROR> no lig*_out*.icb in " + s_tempDir
+    quit
+endif
+read binary s_fout
+delete system s_fout l_warn = no
+
+
+# =============================================================================
+# Step 4 — Sort and export                                               [v3]
+# =============================================================================
+s_out_dir = s_results_dir + "/results"
+if (!Exist(s_out_dir)) make directory s_out_dir
+s_out_sdf = s_out_dir + "/MEL_" + String(i_mel_row) + "_enumerated.sdf"
+
+if (Type(modifiersTab) != "table") then
+    print " ERROR [v3]> modifiersTab not populated after foreground run."
+    quit
+endif
+
+print " [v3] modifiersTab has " + String(Nof(modifiersTab)) + " rows — sorting and exporting ..."
+sort reverse modifiersTab.NN_Score
+write table mol modifiersTab s_out_sdf
+print " [v3] exported " + String(Nof(modifiersTab)) + " rows to " + s_out_sdf
+
+# quit
