@@ -313,6 +313,132 @@ using the docking-frame mol2 receptor:
   (sorted by MergedScore)
 - [../capselect/gpr91/frags_for_enum_mol2_ranking.tsv](../capselect/gpr91/frags_for_enum_mol2_ranking.tsv)
 
+## How to run
+
+Four ways to invoke CapSelect, choose by use case:
+
+| Scenario | Tool |
+|----------|------|
+| Quick local experimentation, modifying the algorithm | Python port (`capselect_py.py`) |
+| Reproducible binary comparison on Mac | Mac-compiled `CapSelect_local` from `build_local_binary.sh` |
+| Production runs (canonical V-SYNTHES2 pipeline) | v2.5 binary on CARC via `CapSelectMP_full.sh` |
+| Verifying port changes | Mac-compiled binary on Antonina's example; spot-check against v2.5 on a small CARC run |
+
+All paths in the snippets below are relative to the project root
+`/Users/aoxu/projects/anchnor_based_VSYNTHES/`.
+
+### Option 1 — Python port (local, portable)
+
+Best for quick runs, debugging, modifications.
+
+```bash
+# Build protein.sdf from a docking-frame receptor (mol2 from ICM is the gold
+# standard; PDB works too but needs --chains/--keep-hetatm flags to drop
+# nanobody / bound ligand).
+python3 capselect/extract_protein_sdf.py \
+    GPR91/dock_6rnk_new_rec.mol2 \
+    GPR91/GPR91_6RNK_ICM393_Eff2_2Comp_MEL_Top1000_Hits.sdf \
+    capselect/gpr91/protein_mol2.sdf --margin 5.0
+
+# Run the port. Last arg = MergedScore formula: 'v2_5' (production) or '2021'.
+python3 capselect/capselect_py.py \
+    GPR91/GPR91_6RNK_ICM393_Eff2_2Comp_MEL_Top1000_Hits.sdf \
+    capselect/gpr91/protein_mol2.sdf \
+    capselect/gpr91/out.sdf \
+    v2_5
+
+# Produce frags_for_enum.sdf (sorted by MergedScore desc) + ranking TSV
+python3 capselect/sort_by_mergedscore.py \
+    capselect/gpr91/out.sdf \
+    capselect/gpr91/frags_for_enum.sdf \
+    capselect/gpr91/ranking.tsv
+
+# Sanity check against the reference example
+cd capselect/test_data && python3 ../capselect_py.py fragments.sdf protein.sdf out.sdf 2021 \
+    && python3 ../verify.py CapSelect.sdf out.sdf
+```
+
+**Speed:** single-threaded NumPy, ~9 min for 1000 MELs at ~1400 protein
+atoms. ~4.5 hr for 30K MELs.
+
+### Option 2 — Mac-compiled 2021 binary (local ground truth)
+
+Faster than the port (~18×, ~29 s for 1000 MELs). The compiled binary
+reproduces the 2021 source exactly, including the `ip2_1` constraint.
+
+```bash
+# Build once
+bash capselect/build_local_binary.sh
+# → capselect/test_data/CapSelect_local
+
+# Run (binary hard-codes "fragments.sdf" / "protein.sdf" in cwd)
+mkdir -p run_dir && cd run_dir
+cp /path/to/fragments.sdf .
+cp /path/to/protein.sdf .
+cp ../capselect/test_data/CapSelect_local CapSelect   # rename so log says "CapSelect"
+./CapSelect > run.log 2>&1
+# → CapSelect.sdf with <CapScore> <Spheres> <Max(min)> <Distance>
+# (NO MergedScore; add via sort_by_mergedscore.py after, or compute manually)
+```
+
+The 2021 binary doesn't write `<MergedScore>` — Antonina's original
+workflow expected you to add it in ICM with
+`add column ... 5.*Log(Abs(Score),2)+Log(Abs(CapScore),2) ...`.
+
+### Option 3 — v2.5 production binary on CARC
+
+For matching production exactly. The v2.5 binary is at
+`/project2/katritch_223/VSYNTHES_2_2__012024/VSYNTHES_2_2_CARC_example_project_012024/CapSelect_3D_4D/CapSelect`.
+
+```bash
+# Push inputs to CARC
+ssh CARC 'mkdir -p /tmp/$USER/capselect_run'
+scp protein1.sdf CARC:/tmp/$USER/capselect_run/protein1.sdf
+scp fragments.sdf CARC:/tmp/$USER/capselect_run/fragments.sdf
+
+# Small batch (≤ ~5k MELs, < 5 min): login node is fine, no SLURM
+ssh CARC '
+    cd /tmp/$USER/capselect_run && \
+    cp /project2/katritch_223/VSYNTHES_2_2__012024/VSYNTHES_2_2_CARC_example_project_012024/CapSelect_3D_4D/CapSelect . && \
+    ./CapSelect > run.log 2>&1
+'
+scp CARC:/tmp/$USER/capselect_run/CapSelect.sdf .
+```
+
+For large batches (30K+ MELs) use Antonina's MP chunker. It generates
+`protein1.sdf` from an ICM docking project, fans the binary across
+cores, and writes the final `frags_for_enum.sdf` sorted by
+`MergedScore`:
+
+```bash
+ssh CARC '
+    mkdir -p /tmp/$USER/capselect_prod && cd /tmp/$USER/capselect_prod && \
+    cp /project2/katritch_223/VSYNTHES_2_2__012024/VSYNTHES_2_2_CARC_example_project_012024/{CapSelectMP_full.sh,icm_CapSelect_to_frags_for_enum.icm,icm_generate_CapSelect_files.icm} . && \
+    cp -r /project2/katritch_223/VSYNTHES_2_2__012024/VSYNTHES_2_2_CARC_example_project_012024/CapSelect_3D_4D . && \
+    # Place your run/ subdir (with _rec.ob, .dtb, hitlist.icb in run/processing_files/) here, then:
+    ./CapSelectMP_full.sh -c 30
+'
+```
+
+Wrap in an sbatch script with appropriate `-c` and time limits for
+SLURM submission.
+
+### Option 4 — Re-running the verification suite
+
+```bash
+# Front 1: port vs Mac-compiled binary on Antonina's 5-fragment example
+cd capselect/test_data
+./CapSelect_local > /dev/null && \
+python3 ../capselect_py.py fragments.sdf protein.sdf python_out.sdf 2021 && \
+python3 ../verify.py CapSelect.sdf python_out.sdf
+# Expected: 5/5 PASS
+
+# Front 3: port vs v2.5 production binary on GPR91 — outputs already saved at
+#   capselect/gpr91/CapSelect_gpr91_mol2_v25binary.sdf
+#   capselect/gpr91/CapSelect_gpr91_mol2_port_2021.sdf
+# Element-wise comparison logic is in TEST_RESULTS.md (see "Front 3").
+```
+
 ## Caveats and pitfalls
 
 1. **Receptor coordinate frame**. CapSelect's clash checks must be
